@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07111f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Offline GPS Dashboard</title>
+<style>
+:root{
+  --bg:#07111f;
+  --panel:#0d1b2c;
+  --panel2:#11243a;
+  --text:#eef7ff;
+  --muted:#8ea5bb;
+  --accent:#46c7ff;
+  --good:#50e39b;
+  --warn:#ffd166;
+  --bad:#ff6b6b;
+  --line:rgba(255,255,255,.08);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+body{
+  background:
+    radial-gradient(circle at top right,rgba(70,199,255,.14),transparent 34%),
+    linear-gradient(180deg,#081522,#07111f 60%);
+  padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 18px);
+}
+.app{max-width:900px;margin:auto}
+.header{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px
+}
+.title-wrap h1{font-size:20px;margin:0;letter-spacing:.2px}
+.subtitle{font-size:12px;color:var(--muted);margin-top:3px}
+.status{
+  display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);
+  border:1px solid var(--line);padding:8px 10px;border-radius:999px;font-size:12px
+}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 12px currentColor}
+.dot.live{background:var(--good)}
+.dot.error{background:var(--bad)}
+.hero{
+  display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-bottom:12px
+}
+.card{
+  background:linear-gradient(180deg,rgba(17,36,58,.96),rgba(13,27,44,.96));
+  border:1px solid var(--line);border-radius:20px;padding:16px;
+  box-shadow:0 14px 40px rgba(0,0,0,.28)
+}
+.speed-card{min-height:230px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.speed-value{font-size:76px;font-weight:800;line-height:.9;letter-spacing:-4px}
+.speed-unit{font-size:15px;color:var(--muted);margin-top:8px}
+.speed-sub{display:flex;gap:18px;margin-top:20px;font-size:13px;color:var(--muted)}
+.speed-sub b{color:var(--text);font-size:17px}
+.compass-wrap{display:flex;align-items:center;justify-content:center;min-height:230px}
+.compass{
+  width:190px;height:190px;border-radius:50%;position:relative;
+  border:2px solid rgba(255,255,255,.13);
+  background:
+    radial-gradient(circle,rgba(70,199,255,.08),transparent 55%),
+    repeating-conic-gradient(from 0deg,rgba(255,255,255,.18) 0 1deg,transparent 1deg 15deg);
+  box-shadow:inset 0 0 30px rgba(0,0,0,.3)
+}
+.compass:before,.compass:after{position:absolute;font-weight:800;font-size:14px}
+.compass:before{content:"N";top:10px;left:50%;transform:translateX(-50%);color:var(--bad)}
+.compass:after{content:"S";bottom:10px;left:50%;transform:translateX(-50%);color:var(--muted)}
+.east,.west{position:absolute;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);font-size:14px}
+.east{right:12px}.west{left:12px}
+.arrow{
+  position:absolute;left:50%;top:50%;width:22px;height:74px;transform-origin:50% 100%;
+  transform:translate(-50%,-100%) rotate(0deg);transition:transform .18s linear
+}
+.arrow:before{
+  content:"";position:absolute;left:50%;transform:translateX(-50%);
+  border-left:11px solid transparent;border-right:11px solid transparent;
+  border-bottom:62px solid var(--accent);filter:drop-shadow(0 0 8px rgba(70,199,255,.55))
+}
+.arrow:after{
+  content:"";position:absolute;width:18px;height:18px;border-radius:50%;
+  left:2px;bottom:-9px;background:#dff7ff;border:4px solid var(--accent)
+}
+.heading-label{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,28px);
+  font-size:13px;font-weight:700
+}
+.grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px
+}
+.metric{min-height:104px}
+.label{font-size:12px;color:var(--muted);margin-bottom:8px}
+.value{font-size:25px;font-weight:750;word-break:break-word}
+.unit{font-size:12px;color:var(--muted);margin-left:4px}
+.coord-card{margin-bottom:12px}
+.coords{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.coord-box{
+  background:rgba(255,255,255,.035);padding:12px;border-radius:14px;border:1px solid var(--line)
+}
+.coord-box .value{font-size:18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+button{
+  appearance:none;border:none;border-radius:15px;padding:14px 12px;font-weight:750;
+  background:var(--accent);color:#00131d;font-size:14px
+}
+button.secondary{background:#162a40;color:var(--text);border:1px solid var(--line)}
+button.danger{background:#3a1b25;color:#ffdce2;border:1px solid rgba(255,107,107,.22)}
+button:active{transform:scale(.985)}
+.log{max-height:220px;overflow:auto}
+.log-row{
+  display:grid;grid-template-columns:72px 1fr 1fr;gap:8px;
+  padding:10px 0;border-bottom:1px solid var(--line);font-size:12px
+}
+.log-row:last-child{border-bottom:none}
+.muted{color:var(--muted)}
+.notice{
+  font-size:12px;line-height:1.45;color:var(--muted);margin-top:10px
+}
+.hidden{display:none}
+@media(max-width:700px){
+  .hero{grid-template-columns:1fr}
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .actions{grid-template-columns:1fr}
+  .speed-card,.compass-wrap{min-height:205px}
+  .speed-value{font-size:68px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title-wrap">
+      <h1>Offline GPS Dashboard</h1>
+      <div class="subtitle" id="clock">Waiting for GPS...</div>
+    </div>
+    <div class="status">
+      <span id="statusDot" class="dot"></span>
+      <span id="statusText">Idle</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <section class="card speed-card">
+      <div class="label">CURRENT SPEED</div>
+      <div><span id="speed" class="speed-value">0.0</span></div>
+      <div class="speed-unit">mph</div>
+      <div class="speed-sub">
+        <span>Max<br><b id="maxSpeed">0.0 mph</b></span>
+        <span>Average<br><b id="avgSpeed">0.0 mph</b></span>
+      </div>
+    </section>
+
+    <section class="card compass-wrap">
+      <div class="compass">
+        <span class="east">E</span>
+        <span class="west">W</span>
+        <div id="arrow" class="arrow"></div>
+        <div id="headingLabel" class="heading-label">0° N</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card metric">
+      <div class="label">ALTITUDE</div>
+      <div><span id="altitude" class="value">—</span><span class="unit">ft</span></div>
+    </section>
+    <section class="card metric">
+      <div class="label">GPS ACCURACY</div>
+      <div><span id="accuracy" class="value">—</span><span class="unit">ft</span></div>
+    </section>
+    <section class="card metric">
+      <div class="label">HEADING</div>
+      <div><span id="heading" class="value">—</span><span class="unit">deg</span></div>
+    </section>
+    <section class="card metric">
+      <div class="label">TRIP DISTANCE</div>
+      <div><span id="distance" class="value">0.00</span><span class="unit">mi</span></div>
+    </section>
+    <section class="card metric">
+      <div class="label">GPS AGE</div>
+      <div><span id="gpsAge" class="value">—</span><span class="unit">sec</span></div>
+    </section>
+    <section class="card metric">
+      <div class="label">POINTS SAVED</div>
+      <div><span id="points" class="value">0</span></div>
+    </section>
+  </div>
+
+  <section class="card coord-card">
+    <div class="label">LOCATION</div>
+    <div class="coords">
+      <div class="coord-box">
+        <div class="label">LATITUDE</div>
+        <div id="lat" class="value">—</div>
+      </div>
+      <div class="coord-box">
+        <div class="label">LONGITUDE</div>
+        <div id="lon" class="value">—</div>
+      </div>
+    </div>
+    <div class="notice" id="timestamp">No GPS fix yet.</div>
+  </section>
+
+  <div class="actions">
+    <button id="startBtn">Start GPS</button>
+    <button id="pauseBtn" class="secondary">Pause Tracking</button>
+    <button id="resetBtn" class="danger">Reset Trip</button>
+  </div>
+
+  <section class="card">
+    <div class="label">RECENT GPS HISTORY</div>
+    <div id="log" class="log">
+      <div class="muted">No recorded points yet.</div>
+    </div>
+    <div class="notice">
+      This page does not need internet after it is saved. GPS permission is still required.
+      On iPhone, open it from Safari or a home-screen web app. GPS may pause when Safari is fully closed or the phone is locked.
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+  const els = {
+    speed:$("speed"), maxSpeed:$("maxSpeed"), avgSpeed:$("avgSpeed"),
+    altitude:$("altitude"), accuracy:$("accuracy"), heading:$("heading"),
+    distance:$("distance"), gpsAge:$("gpsAge"), points:$("points"),
+    lat:$("lat"), lon:$("lon"), timestamp:$("timestamp"),
+    statusText:$("statusText"), statusDot:$("statusDot"),
+    arrow:$("arrow"), headingLabel:$("headingLabel"), log:$("log"),
+    startBtn:$("startBtn"), pauseBtn:$("pauseBtn"), resetBtn:$("resetBtn"),
+    clock:$("clock")
+  };
+
+  let watchId = null;
+  let tracking = false;
+  let lastPosition = null;
+  let lastFixTime = null;
+  let tripMiles = Number(localStorage.getItem("gpsTripMiles") || 0);
+  let maxMph = Number(localStorage.getItem("gpsMaxMph") || 0);
+  let speedSum = 0;
+  let speedCount = 0;
+  let history = [];
+
+  try {
+    history = JSON.parse(localStorage.getItem("gpsHistory") || "[]");
+    if (!Array.isArray(history)) history = [];
+  } catch { history = []; }
+
+  function setStatus(text, type="idle"){
+    els.statusText.textContent = text;
+    els.statusDot.className = "dot" + (type==="live" ? " live" : type==="error" ? " error" : "");
+  }
+
+  function mphFromMps(v){
+    return Number.isFinite(v) && v >= 0 ? v * 2.236936 : 0;
+  }
+
+  function feetFromMeters(v){
+    return Number.isFinite(v) ? v * 3.28084 : null;
+  }
+
+  function cardinal(deg){
+    if (!Number.isFinite(deg)) return "—";
+    const dirs = ["N","NE","E","SE","S","SW","W","NW"];
+    return dirs[Math.round(((deg % 360) / 45)) % 8];
+  }
+
+  function haversineMiles(a,b){
+    const R = 3958.7613;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const lat1 = toRad(a.latitude);
+    const lat2 = toRad(b.latitude);
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  function renderHistory(){
+    els.points.textContent = history.length;
+    if (!history.length){
+      els.log.innerHTML = '<div class="muted">No recorded points yet.</div>';
+      return;
+    }
+    els.log.innerHTML = history.slice(-20).reverse().map(p => `
+      <div class="log-row">
+        <div>${new Date(p.t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"})}</div>
+        <div>${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
+        <div>${p.speed.toFixed(1)} mph</div>
+      </div>
+    `).join("");
+  }
+
+  function saveState(){
+    localStorage.setItem("gpsTripMiles", tripMiles.toString());
+    localStorage.setItem("gpsMaxMph", maxMph.toString());
+    localStorage.setItem("gpsHistory", JSON.stringify(history.slice(-500)));
+  }
+
+  function handlePosition(pos){
+    const c = pos.coords;
+    const now = pos.timestamp || Date.now();
+    const mph = mphFromMps(c.speed);
+    const heading = Number.isFinite(c.heading) ? c.heading : null;
+
+    if (tracking && lastPosition){
+      const segment = haversineMiles(lastPosition.coords, c);
+      const seconds = Math.max(1, (now - (lastPosition.timestamp || now)) / 1000);
+      const impliedMph = segment / (seconds / 3600);
+
+      if (segment < 1 && impliedMph < 180 && c.accuracy <= 150){
+        tripMiles += segment;
+      }
+    }
+
+    if (mph > maxMph && mph < 250) maxMph = mph;
+    if (mph >= 0 && mph < 250){
+      speedSum += mph;
+      speedCount++;
+    }
+
+    els.speed.textContent = mph.toFixed(1);
+    els.maxSpeed.textContent = maxMph.toFixed(1) + " mph";
+    els.avgSpeed.textContent = (speedCount ? speedSum / speedCount : 0).toFixed(1) + " mph";
+    els.altitude.textContent = c.altitude == null ? "—" : Math.round(feetFromMeters(c.altitude));
+    els.accuracy.textContent = Math.round(feetFromMeters(c.accuracy));
+    els.heading.textContent = heading == null ? "—" : Math.round(heading);
+    els.distance.textContent = tripMiles.toFixed(2);
+    els.lat.textContent = c.latitude.toFixed(6);
+    els.lon.textContent = c.longitude.toFixed(6);
+    els.timestamp.textContent = "Last fix: " + new Date(now).toLocaleString();
+
+    if (heading != null){
+      els.arrow.style.transform = `translate(-50%,-100%) rotate(${heading}deg)`;
+      els.headingLabel.textContent = `${Math.round(heading)}° ${cardinal(heading)}`;
+    } else {
+      els.headingLabel.textContent = "No heading";
+    }
+
+    if (tracking){
+      history.push({t:now,lat:c.latitude,lon:c.longitude,speed:mph});
+      history = history.slice(-500);
+      saveState();
+      renderHistory();
+    }
+
+    lastPosition = pos;
+    lastFixTime = now;
+    setStatus(tracking ? "GPS live" : "GPS paused", tracking ? "live" : "idle");
+  }
+
+  function handleError(err){
+    const names = {
+      1:"Permission denied",
+      2:"Position unavailable",
+      3:"GPS timeout"
+    };
+    setStatus(names[err.code] || "GPS error", "error");
+    els.timestamp.textContent = (names[err.code] || err.message) + ". Make sure Location Services are enabled.";
+  }
+
+  function startGPS(){
+    if (!("geolocation" in navigator)){
+      setStatus("GPS unsupported","error");
+      els.timestamp.textContent = "This browser does not support geolocation.";
+      return;
+    }
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    tracking = true;
+    els.pauseBtn.textContent = "Pause Tracking";
+    setStatus("Requesting GPS...");
+    watchId = navigator.geolocation.watchPosition(handlePosition, handleError, {
+      enableHighAccuracy:true,
+      maximumAge:1000,
+      timeout:15000
+    });
+  }
+
+  function togglePause(){
+    tracking = !tracking;
+    els.pauseBtn.textContent = tracking ? "Pause Tracking" : "Resume Tracking";
+    setStatus(tracking ? "GPS live" : "GPS paused", tracking ? "live" : "idle");
+  }
+
+  function resetTrip(){
+    tripMiles = 0;
+    maxMph = 0;
+    speedSum = 0;
+    speedCount = 0;
+    history = [];
+    lastPosition = null;
+    localStorage.removeItem("gpsTripMiles");
+    localStorage.removeItem("gpsMaxMph");
+    localStorage.removeItem("gpsHistory");
+    els.distance.textContent = "0.00";
+    els.maxSpeed.textContent = "0.0 mph";
+    els.avgSpeed.textContent = "0.0 mph";
+    renderHistory();
+  }
+
+  els.startBtn.addEventListener("click", startGPS);
+  els.pauseBtn.addEventListener("click", togglePause);
+  els.resetBtn.addEventListener("click", resetTrip);
+
+  setInterval(() => {
+    els.clock.textContent = new Date().toLocaleString([], {
+      weekday:"short", month:"short", day:"numeric",
+      hour:"2-digit", minute:"2-digit", second:"2-digit"
+    });
+    if (lastFixTime){
+      els.gpsAge.textContent = Math.max(0, Math.round((Date.now()-lastFixTime)/1000));
+    }
+  },1000);
+
+  els.distance.textContent = tripMiles.toFixed(2);
+  els.maxSpeed.textContent = maxMph.toFixed(1) + " mph";
+  renderHistory();
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && watchId === null) setStatus("Idle");
+  });
+})();
+</script>
+</body>
+</html>
