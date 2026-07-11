@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07111f">
+<title>Offline GPS</title>
+<style>
+:root{
+  --bg:#07111f;
+  --panel:rgba(12,25,43,.92);
+  --panel2:#0e1d30;
+  --line:#25415f;
+  --text:#eef7ff;
+  --muted:#9ab0c7;
+  --accent:#3dd6ff;
+  --good:#49e58b;
+  --warn:#ffd166;
+  --danger:#ff5d73;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+button,input,select{font:inherit}
+#app{height:100%;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+header{
+  height:58px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:8px 12px;border-bottom:1px solid var(--line);background:rgba(5,13,24,.94);backdrop-filter:blur(16px)
+}
+.title{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:.2px}
+.liveDot{width:10px;height:10px;border-radius:50%;background:#65788c;box-shadow:0 0 0 0 rgba(73,229,139,.6)}
+.liveDot.on{background:var(--good);animation:pulse 1.7s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 11px rgba(73,229,139,0)}100%{box-shadow:0 0 0 0 rgba(73,229,139,0)}}
+.headerBtns{display:flex;gap:7px}
+.iconBtn,.btn{
+  border:1px solid var(--line);color:var(--text);background:var(--panel2);border-radius:12px;
+  min-height:40px;padding:0 13px;font-weight:700
+}
+.iconBtn{width:42px;padding:0;font-size:18px}
+.iconBtn:active,.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(135deg,#087fb0,#0bb3d9);border-color:#27c7ec}
+.btn.good{background:#0f6040;border-color:#2ecb7c}
+.btn.danger{background:#6a2030;border-color:#e04c68}
+main{position:relative;flex:1;min-height:0}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#07111f}
+.topHud{
+  position:absolute;top:10px;left:10px;right:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;pointer-events:none
+}
+.card{
+  background:rgba(10,23,39,.88);border:1px solid rgba(93,145,190,.38);backdrop-filter:blur(12px);
+  border-radius:14px;padding:8px 9px;box-shadow:0 6px 22px rgba(0,0,0,.25)
+}
+.card .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.card .value{font-size:18px;font-weight:850;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapControls{position:absolute;right:10px;top:94px;display:flex;flex-direction:column;gap:8px}
+.mapControls button{
+  width:44px;height:44px;border-radius:13px;border:1px solid var(--line);background:rgba(12,25,43,.92);color:#fff;font-size:20px;font-weight:900
+}
+.compass{
+  position:absolute;left:12px;bottom:158px;width:64px;height:64px;border-radius:50%;
+  background:rgba(9,22,37,.93);border:1px solid var(--line);display:grid;place-items:center;
+  box-shadow:0 7px 20px rgba(0,0,0,.3)
+}
+.compass .ring{position:absolute;inset:5px;border:1px solid #466684;border-radius:50%}
+.compass .needle{font-size:29px;transform-origin:50% 50%;transition:transform .12s linear}
+.compass .n{position:absolute;top:5px;font-size:10px;font-weight:900;color:var(--danger)}
+.status{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:159px;
+  max-width:68%;padding:7px 11px;border-radius:999px;background:rgba(8,18,31,.9);border:1px solid var(--line);
+  color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.bottomSheet{
+  position:absolute;left:8px;right:8px;bottom:8px;background:rgba(8,19,33,.94);border:1px solid var(--line);
+  border-radius:18px;padding:10px;backdrop-filter:blur(18px);box-shadow:0 9px 32px rgba(0,0,0,.36)
+}
+.coords{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
+.coordBox{background:#0b1a2c;border:1px solid #1e3a57;border-radius:12px;padding:7px 9px}
+.coordBox small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}
+.coordBox b{font-size:14px}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.actions .btn{padding:0 6px;font-size:12px}
+.modal{
+  position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.62);display:none;align-items:flex-end
+}
+.modal.open{display:flex}
+.sheet{
+  width:100%;max-height:82vh;overflow:auto;background:#0a1728;border-top:1px solid #2a4969;border-radius:22px 22px 0 0;
+  padding:16px 14px calc(18px + env(safe-area-inset-bottom))
+}
+.sheet h2{margin:0 0 12px}
+.section{border:1px solid #203d59;background:#0d1d31;border-radius:14px;padding:12px;margin:10px 0}
+.section h3{margin:0 0 8px;font-size:15px}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+input{
+  width:100%;background:#071422;color:#fff;border:1px solid #2a4865;border-radius:10px;padding:10px
+}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{display:flex;justify-content:space-between;gap:8px;align-items:center;background:#081522;border:1px solid #1f3b56;border-radius:11px;padding:9px}
+.itemText{min-width:0}
+.itemText b,.itemText small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.itemText small{color:var(--muted)}
+.itemBtns{display:flex;gap:5px}
+.mini{border:1px solid #31516f;background:#10243a;color:#fff;border-radius:9px;padding:7px 9px}
+.note{color:var(--muted);font-size:12px;line-height:1.45}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.toggle input{width:22px;height:22px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="title"><span id="liveDot" class="liveDot"></span><span>Offline GPS</span></div>
+  <div class="headerBtns">
+    <button id="centerBtn" class="iconBtn" title="Center on me">◎</button>
+    <button id="menuBtn" class="iconBtn" title="Menu">☰</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="map"></canvas>
+
+  <div class="topHud">
+    <div class="card"><div class="label">Speed</div><div id="speed" class="value">0.0 mph</div></div>
+    <div class="card"><div class="label">Heading</div><div id="heading" class="value">—</div></div>
+    <div class="card"><div class="label">Accuracy</div><div id="accuracy" class="value">—</div></div>
+  </div>
+
+  <div class="mapControls">
+    <button id="zoomIn">+</button>
+    <button id="zoomOut">−</button>
+    <button id="followBtn">⌖</button>
+  </div>
+
+  <div class="compass">
+    <div class="ring"></div>
+    <div class="n">N</div>
+    <div id="needle" class="needle">▲</div>
+  </div>
+
+  <div id="status" class="status">Tap Start GPS</div>
+
+  <div class="bottomSheet">
+    <div class="coords">
+      <div class="coordBox"><small>Latitude</small><b id="lat">—</b></div>
+      <div class="coordBox"><small>Longitude</small><b id="lon">—</b></div>
+    </div>
+    <div class="actions">
+      <button id="startBtn" class="btn primary">Start GPS</button>
+      <button id="recordBtn" class="btn">Record</button>
+      <button id="markBtn" class="btn">Waypoint</button>
+      <button id="clearBtn" class="btn danger">Clear</button>
+    </div>
+  </div>
+</main>
+</div>
+
+<div id="modal" class="modal">
+  <div class="sheet">
+    <div class="row">
+      <h2 style="flex:1">GPS Tools</h2>
+      <button id="closeModal" class="iconBtn">×</button>
+    </div>
+
+    <div class="section">
+      <h3>Current position</h3>
+      <div class="note" id="detailPosition">No GPS fix yet.</div>
+    </div>
+
+    <div class="section">
+      <h3>Saved waypoints</h3>
+      <div class="row">
+        <input id="waypointName" maxlength="40" placeholder="Waypoint name">
+        <button id="saveNamedWaypoint" class="btn primary">Save</button>
+      </div>
+      <div id="waypointList" class="list" style="margin-top:10px"></div>
+    </div>
+
+
+    <div class="section">
+      <h3>Offline street map</h3>
+      <div class="row">
+        <button id="downloadMap" class="btn primary">Preload 3×3 Area</button>
+        <button id="deleteMap" class="btn danger">Delete Map</button>
+      </div>
+      <div id="mapInfo" class="note" style="margin-top:8px">
+        Start GPS, then preload the surrounding 3×3 map grid. The app keeps adding grid sections as you travel so roads remain visible before you reach the edge.
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Route</h3>
+      <div class="row">
+        <button id="exportGpx" class="btn">Export GPX</button>
+        <button id="exportJson" class="btn">Export JSON</button>
+      </div>
+      <div class="note" style="margin-top:8px">Routes and waypoints are stored locally on this iPhone.</div>
+    </div>
+
+    <div class="section">
+      <h3>Settings</h3>
+      <div class="toggle">
+        <label for="keepScreen">Keep screen awake</label>
+        <input id="keepScreen" type="checkbox">
+      </div>
+      <div class="toggle" style="margin-top:10px">
+        <label for="metric">Use metric units</label>
+        <input id="metric" type="checkbox">
+      </div>
+      <div class="toggle" style="margin-top:10px">
+        <label for="autoMap">Auto-prefetch surrounding map grid</label>
+        <input id="autoMap" type="checkbox" checked>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Offline use</h3>
+      <div class="note">
+        This file contains no external libraries or online map tiles. GPS works without cellular service after the page is opened.
+        For reliable iPhone access, host it over HTTPS and add it to the Home Screen. iOS may pause GPS when the screen locks or the app is backgrounded.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const canvas = $('map');
+const ctx = canvas.getContext('2d');
+
+let watchId = null;
+let current = null;
+let lastFixTime = 0;
+let recording = false;
+let route = load('offlineGpsRoute', []);
+let waypoints = load('offlineGpsWaypoints', []);
+let mapChunks = [];
+let mapDownloadBusy = false;
+let lastAutoMapCheck = 0;
+let gridCenter = null;
+let downloadQueue = [];
+let queueRunning = false;
+const CHUNK_RADIUS_METERS = 9000;
+const GRID_SPACING_METERS = 14000;
+const GRID_REFRESH_DISTANCE_METERS = 7000;
+const MAX_MAP_CHUNKS = 120;
+let autoMapEnabled = localStorage.getItem('offlineGpsAutoMap') !== '0';
+$('autoMap').checked = autoMapEnabled;
+let follow = true;
+let zoom = Number(localStorage.getItem('offlineGpsZoom') || 16);
+let center = null;
+let dragging = false;
+let dragStart = null;
+let centerStart = null;
+let deviceHeading = null;
+let wakeLock = null;
+let metric = localStorage.getItem('offlineGpsMetric') === '1';
+$('metric').checked = metric;
+
+function load(key, fallback){
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch { return fallback; }
+}
+function save(){
+  localStorage.setItem('offlineGpsRoute', JSON.stringify(route.slice(-20000)));
+  localStorage.setItem('offlineGpsWaypoints', JSON.stringify(waypoints.slice(-500)));
+}
+function rad(d){ return d * Math.PI / 180; }
+function deg(r){ return r * 180 / Math.PI; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+function project(lat, lon, z=zoom){
+  const n = Math.pow(2,z) * 256;
+  const x = (lon + 180) / 360 * n;
+  const s = Math.sin(rad(clamp(lat,-85.05112878,85.05112878)));
+  const y = (0.5 - Math.log((1+s)/(1-s))/(4*Math.PI)) * n;
+  return {x,y};
+}
+function unproject(x,y,z=zoom){
+  const n = Math.pow(2,z) * 256;
+  const lon = x/n*360-180;
+  const lat = deg(Math.atan(Math.sinh(Math.PI*(1-2*y/n))));
+  return {lat,lon};
+}
+function distanceMeters(a,b){
+  const R=6371000;
+  const p1=rad(a.lat), p2=rad(b.lat), dp=rad(b.lat-a.lat), dl=rad(b.lon-a.lon);
+  const q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(q));
+}
+function bearing(a,b){
+  const p1=rad(a.lat),p2=rad(b.lat),dl=rad(b.lon-a.lon);
+  const y=Math.sin(dl)*Math.cos(p2);
+  const x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return (deg(Math.atan2(y,x))+360)%360;
+}
+function headingName(h){
+  if(h==null || !isFinite(h)) return '—';
+  const names=['N','NE','E','SE','S','SW','W','NW'];
+  return names[Math.round(h/45)%8] + ' ' + Math.round(h) + '°';
+}
+
+function resize(){
+  const dpr=Math.min(devicePixelRatio||1,3);
+  const r=canvas.getBoundingClientRect();
+  canvas.width=Math.round(r.width*dpr);
+  canvas.height=Math.round(r.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+addEventListener('resize',resize);
+
+function mapPoint(lat,lon){
+  if(!center) return null;
+  const c=project(center.lat,center.lon);
+  const p=project(lat,lon);
+  return {x:canvas.clientWidth/2+(p.x-c.x), y:canvas.clientHeight/2+(p.y-c.y)};
+}
+
+
+function openMapDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open('OfflineGpsMapDB',1);
+    req.onupgradeneeded=()=>req.result.createObjectStore('maps');
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function dbPut(key,value){
+  const db=await openMapDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('maps','readwrite');
+    tx.objectStore('maps').put(value,key);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+async function dbGet(key){
+  const db=await openMapDb();
+  return new Promise((resolve,reject)=>{
+    const req=db.transaction('maps','readonly').objectStore('maps').get(key);
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function dbDelete(key){
+  const db=await openMapDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('maps','readwrite');
+    tx.objectStore('maps').delete(key);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+function simplifyGeometry(points){
+  if(points.length<=2) return points;
+  const out=[points[0]];
+  let last=points[0];
+  for(let i=1;i<points.length-1;i++){
+    const p=points[i];
+    if(Math.abs(p.lat-last.lat)+Math.abs(p.lon-last.lon)>0.000035){
+      out.push(p); last=p;
+    }
+  }
+  out.push(points[points.length-1]);
+  return out;
+}
+function offsetLatLon(lat,lon,eastMeters,northMeters){
+  const dLat=northMeters/111320;
+  const dLon=eastMeters/(111320*Math.cos(rad(lat))||1);
+  return {lat:lat+dLat,lon:lon+dLon};
+}
+
+function chunkExistsNear(point){
+  return mapChunks.some(c=>distanceMeters(c.center,point)<GRID_SPACING_METERS*0.55);
+}
+
+async function fetchMapChunk(point){
+  if(chunkExistsNear(point)) return false;
+
+  const q=`[out:json][timeout:45];
+    (
+      way["highway"](around:${CHUNK_RADIUS_METERS},${point.lat},${point.lon});
+      way["railway"="rail"](around:${CHUNK_RADIUS_METERS},${point.lat},${point.lon});
+      way["waterway"](around:${CHUNK_RADIUS_METERS},${point.lat},${point.lon});
+    );
+    out tags geom;`;
+
+  const body=new URLSearchParams({data:q});
+  const endpoints=[
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass-api.de/api/interpreter'
+  ];
+
+  let json=null,lastErr=null;
+  for(const endpoint of endpoints){
+    try{
+      const r=await fetch(endpoint,{
+        method:'POST',
+        body,
+        headers:{'Accept':'application/json'}
+      });
+      if(!r.ok) throw new Error('Map server returned '+r.status);
+      json=await r.json();
+      break;
+    }catch(e){ lastErr=e; }
+  }
+  if(!json) throw lastErr||new Error('Map download failed');
+
+  const features=[];
+  for(const el of json.elements||[]){
+    if(!el.geometry||el.geometry.length<2) continue;
+    features.push({
+      id:el.id,
+      type:el.tags?.highway?'road':el.tags?.waterway?'water':'rail',
+      cls:el.tags?.highway||el.tags?.waterway||el.tags?.railway||'',
+      name:el.tags?.name||el.tags?.ref||'',
+      points:simplifyGeometry(el.geometry.map(g=>({lat:g.lat,lon:g.lon})))
+    });
+  }
+
+  mapChunks.push({
+    id:'chunk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    center:{lat:point.lat,lon:point.lon},
+    radius:CHUNK_RADIUS_METERS,
+    downloaded:Date.now(),
+    features
+  });
+
+  if(mapChunks.length>MAX_MAP_CHUNKS){
+    mapChunks=mapChunks.slice(mapChunks.length-MAX_MAP_CHUNKS);
+  }
+
+  await dbPut('chunks',mapChunks);
+  return true;
+}
+
+function buildGrid(centerPoint){
+  const points=[];
+  for(let y=-1;y<=1;y++){
+    for(let x=-1;x<=1;x++){
+      points.push(offsetLatLon(
+        centerPoint.lat,
+        centerPoint.lon,
+        x*GRID_SPACING_METERS,
+        y*GRID_SPACING_METERS
+      ));
+    }
+  }
+
+  points.sort((a,b)=>
+    distanceMeters(centerPoint,a)-distanceMeters(centerPoint,b)
+  );
+  return points.filter(p=>!chunkExistsNear(p));
+}
+
+async function processDownloadQueue(){
+  if(queueRunning || mapDownloadBusy) return;
+  if(!navigator.onLine || !downloadQueue.length) return;
+
+  queueRunning=true;
+  mapDownloadBusy=true;
+  $('downloadMap').disabled=true;
+
+  try{
+    let completed=0;
+    const total=downloadQueue.length;
+
+    while(downloadQueue.length && navigator.onLine){
+      const point=downloadQueue.shift();
+      $('downloadMap').textContent=`Loading ${completed+1}/${total}`;
+      $('status').textContent=`Saving surrounding map area ${completed+1} of ${total}…`;
+
+      try{
+        const added=await fetchMapChunk(point);
+        if(added) completed++;
+      }catch(e){
+        console.warn('Chunk download failed',e);
+      }
+
+      const featureTotal=mapChunks.reduce((n,c)=>n+(c.features?.length||0),0);
+      $('mapInfo').textContent=`Saved ${mapChunks.length} map chunks with ${featureTotal.toLocaleString()} total features.`;
+      draw();
+
+      // Avoid hammering the public map server.
+      if(downloadQueue.length){
+        await new Promise(resolve=>setTimeout(resolve,1200));
+      }
+    }
+
+    $('status').textContent=navigator.onLine
+      ? 'Surrounding offline map grid is ready'
+      : 'Map download paused until internet returns';
+  }finally{
+    queueRunning=false;
+    mapDownloadBusy=false;
+    $('downloadMap').disabled=false;
+    $('downloadMap').textContent='Preload 3×3 Area';
+  }
+}
+
+async function downloadNearbyMap(isAutomatic=false){
+  if(!current){
+    if(!isAutomatic) $('status').textContent='Start GPS and wait for a location fix first';
+    return;
+  }
+  if(isAutomatic && !navigator.onLine) return;
+
+  gridCenter={lat:current.lat,lon:current.lon};
+  localStorage.setItem('offlineGpsGridCenter',JSON.stringify(gridCenter));
+
+  const newPoints=buildGrid(gridCenter);
+  if(!newPoints.length){
+    $('status').textContent='The surrounding 3×3 map grid is already saved';
+    return;
+  }
+
+  for(const point of newPoints){
+    if(!downloadQueue.some(p=>distanceMeters(p,point)<1000)){
+      downloadQueue.push(point);
+    }
+  }
+  processDownloadQueue();
+}
+function maybeAutoRefreshMap(){
+  if(!autoMapEnabled || !current || !navigator.onLine) return;
+
+  const now=Date.now();
+  if(now-lastAutoMapCheck<15000) return;
+  lastAutoMapCheck=now;
+
+  if(!gridCenter){
+    try{
+      gridCenter=JSON.parse(localStorage.getItem('offlineGpsGridCenter')||'null');
+    }catch{}
+  }
+
+  if(!gridCenter || !mapChunks.length){
+    downloadNearbyMap(true);
+    return;
+  }
+
+  const moved=distanceMeters(gridCenter,current);
+  if(moved>=GRID_REFRESH_DISTANCE_METERS){
+    $('status').textContent='Approaching map edge — preloading the next surrounding grid…';
+    downloadNearbyMap(true);
+  }
+}
+function roadStyle(f){
+  if(f.type==='water') return {stroke:'#337ba7',width:2};
+  if(f.type==='rail') return {stroke:'#65788b',width:1.5,dash:[5,5]};
+  const major=['motorway','trunk','primary'];
+  const medium=['secondary','tertiary'];
+  if(major.includes(f.cls)) return {stroke:'#e8a85c',width:zoom>=15?5:3};
+  if(medium.includes(f.cls)) return {stroke:'#b7c1cb',width:zoom>=16?4:2.5};
+  return {stroke:'#73889a',width:zoom>=17?3:1.4};
+}
+function drawRoadMap(){
+  if(!mapChunks.length) return;
+  const seen=new Set();
+
+  for(const chunk of mapChunks){
+    for(const f of chunk.features||[]){
+      const key=f.type+':'+f.id;
+      if(seen.has(key)) continue;
+      seen.add(key);
+
+      const style=roadStyle(f);
+      ctx.strokeStyle=style.stroke;
+      ctx.lineWidth=style.width;
+      ctx.setLineDash(style.dash||[]);
+      ctx.lineJoin='round';
+      ctx.lineCap='round';
+      ctx.beginPath();
+
+      let started=false;
+      let firstVisible=null;
+      for(const g of f.points){
+        const p=mapPoint(g.lat,g.lon);
+        if(!p) continue;
+        if(!started){
+          ctx.moveTo(p.x,p.y);
+          started=true;
+          firstVisible=p;
+        }else{
+          ctx.lineTo(p.x,p.y);
+        }
+      }
+
+      if(started) ctx.stroke();
+      ctx.setLineDash([]);
+
+      if(f.name && firstVisible && zoom>=16){
+        ctx.font='10px system-ui';
+        ctx.fillStyle='rgba(225,235,244,.82)';
+        ctx.fillText(f.name,firstVisible.x+3,firstVisible.y-3);
+      }
+    }
+  }
+}
+async function loadSavedMap(){
+  try{
+    mapChunks=await dbGet('chunks')||[];
+    if(!mapChunks.length){
+      const old=await dbGet('nearby');
+      if(old){
+        mapChunks=[{
+          id:'legacy',
+          center:old.center,
+          radius:old.radius||5000,
+          downloaded:old.downloaded||Date.now(),
+          features:old.features||[]
+        }];
+        await dbPut('chunks',mapChunks);
+      }
+    }
+
+    if(mapChunks.length){
+      const total=mapChunks.reduce((n,c)=>n+(c.features?.length||0),0);
+      $('mapInfo').textContent=`Saved ${mapChunks.length} map chunk${mapChunks.length===1?'':'s'} with ${total.toLocaleString()} total features.`;
+      if(!center) center=mapChunks[mapChunks.length-1].center;
+      try{
+        gridCenter=JSON.parse(localStorage.getItem('offlineGpsGridCenter')||'null');
+      }catch{}
+      draw();
+    }
+  }catch{}
+}
+
+function drawGrid(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  ctx.fillStyle='#07111f'; ctx.fillRect(0,0,w,h);
+  if(!center) return;
+  const c=project(center.lat,center.lon);
+  const spacing = zoom >= 18 ? 64 : zoom >= 15 ? 96 : 128;
+  ctx.lineWidth=1;
+  for(let x=((w/2-c.x)%spacing+spacing)%spacing;x<w;x+=spacing){
+    ctx.strokeStyle='rgba(65,115,155,.18)';
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
+  }
+  for(let y=((h/2-c.y)%spacing+spacing)%spacing;y<h;y+=spacing){
+    ctx.strokeStyle='rgba(65,115,155,.18)';
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+  }
+  ctx.fillStyle='rgba(154,176,199,.7)';
+  ctx.font='11px system-ui';
+  ctx.fillText('OFFLINE GPS GRID',12,h-170);
+  ctx.fillText('Zoom '+zoom,12,h-154);
+}
+
+function drawRoute(){
+  if(route.length<2) return;
+  ctx.lineWidth=4; ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.strokeStyle='#3dd6ff';
+  ctx.beginPath();
+  let started=false;
+  for(const p of route){
+    const m=mapPoint(p.lat,p.lon); if(!m) continue;
+    if(!started){ctx.moveTo(m.x,m.y);started=true}else ctx.lineTo(m.x,m.y);
+  }
+  ctx.stroke();
+}
+
+function drawWaypoints(){
+  for(const w of waypoints){
+    const p=mapPoint(w.lat,w.lon); if(!p) continue;
+    ctx.fillStyle='#ffd166';
+    ctx.beginPath();ctx.arc(p.x,p.y,7,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#1b2230';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='12px system-ui';
+    ctx.fillText(w.name||'Waypoint',p.x+10,p.y+4);
+  }
+}
+
+function drawAccuracy(){
+  if(!current || !current.accuracy) return;
+  const p=mapPoint(current.lat,current.lon); if(!p) return;
+  const metersPerPixel=156543.03392*Math.cos(rad(current.lat))/Math.pow(2,zoom);
+  const r=clamp(current.accuracy/metersPerPixel,5,250);
+  ctx.fillStyle='rgba(61,214,255,.09)';
+  ctx.strokeStyle='rgba(61,214,255,.38)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+}
+
+function drawPosition(){
+  if(!current) return;
+  const p=mapPoint(current.lat,current.lon); if(!p) return;
+  const h = current.heading ?? deviceHeading ?? 0;
+
+  ctx.save();
+  ctx.translate(p.x,p.y);
+  ctx.rotate(rad(h));
+  ctx.fillStyle='#ffffff';
+  ctx.strokeStyle='#07223a';
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(0,-18);ctx.lineTo(11,13);ctx.lineTo(0,8);ctx.lineTo(-11,13);ctx.closePath();
+  ctx.fill();ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle='#3dd6ff';
+  ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();
+}
+
+function draw(){
+  drawGrid();
+  drawRoadMap();
+  drawAccuracy();
+  drawRoute();
+  drawWaypoints();
+  drawPosition();
+}
+
+function updateUi(){
+  if(!current) return;
+  $('lat').textContent=current.lat.toFixed(6);
+  $('lon').textContent=current.lon.toFixed(6);
+
+  const speedMs=current.speed || 0;
+  $('speed').textContent=metric ? (speedMs*3.6).toFixed(1)+' km/h' : (speedMs*2.236936).toFixed(1)+' mph';
+  const h=current.heading ?? deviceHeading;
+  $('heading').textContent=headingName(h);
+  $('accuracy').textContent=metric ? Math.round(current.accuracy)+' m' : Math.round(current.accuracy*3.28084)+' ft';
+  $('needle').style.transform='rotate('+(-(deviceHeading ?? current.heading ?? 0))+'deg)';
+
+  const age=Math.max(0,Math.round((Date.now()-lastFixTime)/1000));
+  $('status').textContent='GPS fix '+age+'s ago';
+  $('detailPosition').innerHTML=
+    '<b>'+current.lat.toFixed(7)+', '+current.lon.toFixed(7)+'</b><br>'+
+    'Altitude: '+(current.altitude==null?'—':(metric?Math.round(current.altitude)+' m':Math.round(current.altitude*3.28084)+' ft'))+
+    '<br>Accuracy: '+(metric?Math.round(current.accuracy)+' m':Math.round(current.accuracy*3.28084)+' ft')+
+    '<br>Time: '+new Date(current.time).toLocaleString();
+}
+
+function onPosition(pos){
+  const c=pos.coords;
+  current={
+    lat:c.latitude,lon:c.longitude,accuracy:c.accuracy||0,
+    altitude:c.altitude,altitudeAccuracy:c.altitudeAccuracy,
+    heading:Number.isFinite(c.heading)?c.heading:null,
+    speed:Number.isFinite(c.speed)?c.speed:0,time:pos.timestamp||Date.now()
+  };
+  lastFixTime=Date.now();
+  if(follow || !center) center={lat:current.lat,lon:current.lon};
+
+  if(recording){
+    const prev=route[route.length-1];
+    if(!prev || distanceMeters(prev,current)>=3 || current.time-prev.time>=10000){
+      route.push({...current});
+      save();
+    }
+  }
+
+  $('liveDot').classList.add('on');
+  updateUi();
+  draw();
+  maybeAutoRefreshMap();
+}
+
+function onError(err){
+  const messages={
+    1:'Location permission denied',
+    2:'GPS position unavailable',
+    3:'GPS request timed out'
+  };
+  $('status').textContent=messages[err.code]||err.message||'GPS error';
+  $('liveDot').classList.remove('on');
+}
+
+async function startGps(){
+  if(!navigator.geolocation){
+    $('status').textContent='Geolocation not supported';
+    return;
+  }
+  if(watchId!==null){
+    navigator.geolocation.clearWatch(watchId);
+    watchId=null;
+    $('startBtn').textContent='Start GPS';
+    $('startBtn').classList.remove('good');
+    $('liveDot').classList.remove('on');
+    $('status').textContent='GPS stopped';
+    return;
+  }
+  $('status').textContent='Requesting GPS permission…';
+  watchId=navigator.geolocation.watchPosition(onPosition,onError,{
+    enableHighAccuracy:true,
+    maximumAge:1000,
+    timeout:15000
+  });
+  $('startBtn').textContent='Stop GPS';
+  $('startBtn').classList.add('good');
+  await requestOrientation();
+}
+
+async function requestOrientation(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined' &&
+       typeof DeviceOrientationEvent.requestPermission==='function'){
+      const result=await DeviceOrientationEvent.requestPermission();
+      if(result!=='granted') return;
+    }
+    addEventListener('deviceorientation',e=>{
+      let h=null;
+      if(typeof e.webkitCompassHeading==='number') h=e.webkitCompassHeading;
+      else if(e.alpha!=null) h=(360-e.alpha)%360;
+      if(h!=null && isFinite(h)){
+        deviceHeading=h;
+        $('needle').style.transform='rotate('+(-h)+'deg)';
+        if(current && current.heading==null){
+          $('heading').textContent=headingName(h);
+          draw();
+        }
+      }
+    },true);
+  }catch{}
+}
+
+function addWaypoint(name){
+  if(!current){$('status').textContent='Start GPS and wait for a fix';return}
+  waypoints.push({
+    id:Date.now().toString(36),
+    name:name||('Waypoint '+(waypoints.length+1)),
+    lat:current.lat,lon:current.lon,time:Date.now()
+  });
+  save();renderWaypoints();draw();
+  $('status').textContent='Waypoint saved';
+}
+
+function renderWaypoints(){
+  const box=$('waypointList');
+  box.innerHTML='';
+  if(!waypoints.length){
+    box.innerHTML='<div class="note">No saved waypoints.</div>';
+    return;
+  }
+  [...waypoints].reverse().forEach(w=>{
+    const el=document.createElement('div');
+    el.className='item';
+    el.innerHTML=
+      '<div class="itemText"><b></b><small></small></div>'+
+      '<div class="itemBtns"><button class="mini go">Go</button><button class="mini del">×</button></div>';
+    el.querySelector('b').textContent=w.name;
+    el.querySelector('small').textContent=w.lat.toFixed(5)+', '+w.lon.toFixed(5);
+    el.querySelector('.go').onclick=()=>{center={lat:w.lat,lon:w.lon};follow=false;$('modal').classList.remove('open');draw()};
+    el.querySelector('.del').onclick=()=>{waypoints=waypoints.filter(x=>x.id!==w.id);save();renderWaypoints();draw()};
+    box.appendChild(el);
+  });
+}
+
+function exportFile(name,type,text){
+  const blob=new Blob([text],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+function gpx(){
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+  const wpts=waypoints.map(w=>`<wpt lat="${w.lat}" lon="${w.lon}"><name>${esc(w.name)}</name><time>${new Date(w.time).toISOString()}</time></wpt>`).join('');
+  const pts=route.map(p=>`<trkpt lat="${p.lat}" lon="${p.lon}">${p.altitude==null?'':`<ele>${p.altitude}</ele>`}<time>${new Date(p.time).toISOString()}</time></trkpt>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Offline GPS" xmlns="http://www.topografix.com/GPX/1/1">${wpts}<trk><name>Offline GPS Route</name><trkseg>${pts}</trkseg></trk></gpx>`;
+}
+
+async function setWakeLock(on){
+  try{
+    if(on && 'wakeLock' in navigator) wakeLock=await navigator.wakeLock.request('screen');
+    else if(wakeLock){await wakeLock.release();wakeLock=null}
+  }catch{
+    $('keepScreen').checked=false;
+    $('status').textContent='Screen wake lock unavailable';
+  }
+}
+
+function zoomBy(delta){
+  const old=zoom;
+  zoom=clamp(zoom+delta,3,21);
+  localStorage.setItem('offlineGpsZoom',zoom);
+  if(center && old!==zoom) draw();
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  dragging=true;dragStart={x:e.clientX,y:e.clientY};centerStart=center?project(center.lat,center.lon):null;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!dragging||!centerStart)return;
+  const dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;
+  center=unproject(centerStart.x-dx,centerStart.y-dy);
+  follow=false;draw();
+});
+canvas.addEventListener('pointerup',()=>dragging=false);
+canvas.addEventListener('pointercancel',()=>dragging=false);
+
+$('startBtn').onclick=startGps;
+$('recordBtn').onclick=()=>{
+  recording=!recording;
+  $('recordBtn').textContent=recording?'Stop Rec':'Record';
+  $('recordBtn').classList.toggle('danger',recording);
+  $('status').textContent=recording?'Route recording started':'Route recording stopped';
+};
+$('markBtn').onclick=()=>addWaypoint();
+$('clearBtn').onclick=()=>{
+  if(confirm('Clear the recorded route?')){
+    route=[];save();draw();$('status').textContent='Route cleared';
+  }
+};
+$('centerBtn').onclick=$('followBtn').onclick=()=>{
+  if(current){center={lat:current.lat,lon:current.lon};follow=true;draw()}
+};
+$('zoomIn').onclick=()=>zoomBy(1);
+$('zoomOut').onclick=()=>zoomBy(-1);
+$('menuBtn').onclick=()=>{$('modal').classList.add('open');renderWaypoints();updateUi()};
+$('closeModal').onclick=()=> $('modal').classList.remove('open');
+$('modal').addEventListener('click',e=>{if(e.target===$('modal'))$('modal').classList.remove('open')});
+$('saveNamedWaypoint').onclick=()=>{
+  addWaypoint($('waypointName').value.trim());
+  $('waypointName').value='';
+};
+
+$('downloadMap').onclick=downloadNearbyMap;
+$('deleteMap').onclick=async()=>{
+  if(confirm('Delete the saved offline street map?')){
+    mapChunks=[];
+    downloadQueue=[];
+    gridCenter=null;
+    localStorage.removeItem('offlineGpsGridCenter');
+    await dbDelete('chunks');
+    await dbDelete('nearby');
+    $('mapInfo').textContent='No offline street map chunks are currently saved.';
+    $('status').textContent='Offline map deleted';
+    draw();
+  }
+};
+$('exportGpx').onclick=()=>exportFile('offline-gps-route.gpx','application/gpx+xml',gpx());
+$('exportJson').onclick=()=>exportFile('offline-gps-data.json','application/json',JSON.stringify({route,waypoints},null,2));
+$('keepScreen').onchange=e=>setWakeLock(e.target.checked);
+$('metric').onchange=e=>{
+  metric=e.target.checked;
+  localStorage.setItem('offlineGpsMetric',metric?'1':'0');
+  updateUi();
+};
+$('autoMap').onchange=e=>{
+  autoMapEnabled=e.target.checked;
+  localStorage.setItem('offlineGpsAutoMap',autoMapEnabled?'1':'0');
+  if(autoMapEnabled) maybeAutoRefreshMap();
+};
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && $('keepScreen').checked) setWakeLock(true);
+  if(document.visibilityState==='visible') processDownloadQueue();
+});
+addEventListener('online',()=>{
+  $('status').textContent='Internet restored — resuming offline map download';
+  processDownloadQueue();
+  maybeAutoRefreshMap();
+});
+
+setInterval(()=>{ if(current) updateUi(); },1000);
+renderWaypoints();
+resize();
+loadSavedMap();
+})();
+</script>
+</body>
+</html>

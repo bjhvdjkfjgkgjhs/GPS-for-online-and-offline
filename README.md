@@ -1,1 +1,0 @@
-# GPS-for-online-and-offline
