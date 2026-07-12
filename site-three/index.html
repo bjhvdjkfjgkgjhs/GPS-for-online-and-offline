@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#07111d" />
+  <title>Storm Chaser Live</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIINfQ3ynhbuU5+BWFnaiEWHwkM4XYnT8M="
+        crossorigin="" />
+
+  <style>
+    :root{
+      --bg:#07111d;
+      --panel:rgba(8,18,31,.94);
+      --panel2:rgba(13,29,48,.92);
+      --line:#29435f;
+      --text:#eef7ff;
+      --muted:#91a9c0;
+      --cyan:#37d8ff;
+      --green:#31e981;
+      --yellow:#ffd24a;
+      --red:#ff445f;
+      --shadow:0 14px 45px rgba(0,0,0,.42);
+    }
+    *{box-sizing:border-box}
+    html,body,#map{width:100%;height:100%;margin:0}
+    body{
+      overflow:hidden;background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    button,input,select{font:inherit}
+    button{touch-action:manipulation}
+    #map{background:#0a1827}
+
+    .leaflet-control-attribution{font-size:10px;background:rgba(4,10,17,.72)!important;color:#a9b7c5}
+    .leaflet-control-attribution a{color:#76dfff}
+    .leaflet-control-zoom{border:1px solid var(--line)!important;box-shadow:var(--shadow)!important}
+    .leaflet-control-zoom a{background:#0c1b2b!important;color:white!important;border-color:var(--line)!important}
+
+    .topbar{
+      position:fixed;z-index:1000;left:max(10px,env(safe-area-inset-left));
+      right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));
+      display:flex;align-items:center;gap:8px;pointer-events:none;
+    }
+    .brand,.status-pill,.top-btn{
+      pointer-events:auto;background:var(--panel);border:1px solid var(--line);
+      box-shadow:var(--shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    }
+    .brand{
+      min-width:0;padding:8px 11px;border-radius:14px;display:flex;align-items:center;gap:9px;
+    }
+    .brand .logo{
+      width:34px;height:34px;display:grid;place-items:center;border-radius:10px;
+      background:linear-gradient(145deg,#173d5c,#07131f);font-size:20px;
+    }
+    .brand strong{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brand small{display:block;color:var(--muted);font-size:11px}
+    .spacer{flex:1}
+    .status-pill{
+      padding:8px 10px;border-radius:999px;display:flex;align-items:center;gap:7px;
+      font-size:12px;font-weight:800;white-space:nowrap;
+    }
+    .dot{width:9px;height:9px;border-radius:50%;background:#75889a;box-shadow:0 0 0 0 rgba(255,255,255,.25)}
+    .dot.live{background:var(--green);animation:pulse 1.5s infinite}
+    .dot.delayed{background:var(--yellow)}
+    .dot.offline{background:var(--red)}
+    @keyframes pulse{50%{box-shadow:0 0 0 8px rgba(49,233,129,0)}}
+    .top-btn{
+      border-radius:13px;color:white;padding:10px 12px;font-weight:800;
+    }
+
+    .panel{
+      position:fixed;z-index:1200;top:0;bottom:0;right:0;width:min(410px,94vw);
+      padding:max(16px,env(safe-area-inset-top)) 14px max(18px,env(safe-area-inset-bottom));
+      background:linear-gradient(180deg,rgba(8,18,31,.99),rgba(5,13,23,.99));
+      border-left:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.55);
+      overflow:auto;transform:translateX(105%);transition:transform .25s ease;
+    }
+    .panel.open{transform:translateX(0)}
+    .panel-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+    .panel-head h2{margin:0;font-size:20px}
+    .close-btn{margin-left:auto;background:#13263a;color:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 11px}
+    .card{
+      padding:13px;margin:10px 0;border-radius:15px;background:var(--panel2);
+      border:1px solid var(--line);
+    }
+    .card h3{font-size:14px;margin:0 0 10px}
+    .hint{color:var(--muted);font-size:12px;line-height:1.45}
+    label{display:block;font-size:12px;font-weight:800;color:#bed0e1;margin:10px 0 5px}
+    input,select{
+      width:100%;border-radius:11px;border:1px solid #35516d;background:#071522;
+      color:#fff;padding:11px 12px;outline:none;
+    }
+    input:focus,select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(55,216,255,.12)}
+    .row{display:flex;gap:8px}
+    .row>*{flex:1}
+    .action{
+      width:100%;border:0;border-radius:12px;padding:12px;font-weight:900;
+      background:var(--cyan);color:#00121b;margin-top:9px;
+    }
+    .action.secondary{background:#18334d;color:#fff;border:1px solid #35516d}
+    .action.danger{background:var(--red);color:white}
+    .action.success{background:var(--green);color:#00230f}
+    .action:disabled{opacity:.5}
+
+    .hud{
+      position:fixed;z-index:900;left:max(10px,env(safe-area-inset-left));
+      right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));
+      display:flex;align-items:flex-end;gap:10px;pointer-events:none;
+    }
+    .chaser-card{
+      pointer-events:auto;width:min(390px,calc(100vw - 20px));padding:12px;
+      background:var(--panel);border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    }
+    .chaser-head{display:flex;gap:10px;align-items:center}
+    .avatar{
+      width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+      background:#102b42;border:1px solid #31526f;font-size:23px;
+    }
+    .chaser-title{min-width:0;flex:1}
+    .chaser-title strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chaser-title small{color:var(--muted)}
+    .live-btn{
+      border:0;background:var(--red);color:#fff;padding:9px 11px;border-radius:11px;font-weight:900;
+    }
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+    .metric{background:#081622;border:1px solid #233b51;border-radius:10px;padding:7px;text-align:center}
+    .metric b{display:block;font-size:14px}
+    .metric span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.6px}
+    .follow-btn{
+      margin-top:8px;width:100%;border:1px solid #35516d;background:#122b41;color:#fff;
+      border-radius:10px;padding:9px;font-weight:800;
+    }
+    .follow-btn.active{background:#154f67;border-color:var(--cyan)}
+
+    .chaser-marker-wrap{background:transparent;border:0}
+    .chaser-marker{
+      position:relative;width:54px;height:54px;filter:drop-shadow(0 5px 8px rgba(0,0,0,.6));
+    }
+    .chaser-marker .ring{
+      position:absolute;inset:5px;border:3px solid white;border-radius:50%;
+      background:#087ea4;box-shadow:0 0 0 4px rgba(55,216,255,.25);
+    }
+    .chaser-marker .car{position:absolute;inset:0;display:grid;place-items:center;font-size:25px}
+    .chaser-marker .arrow{
+      position:absolute;left:22px;top:-16px;width:0;height:0;
+      border-left:5px solid transparent;border-right:5px solid transparent;
+      border-bottom:18px solid #fff;transform-origin:5px 43px;
+    }
+    .chaser-marker.offline{opacity:.58;filter:grayscale(1) drop-shadow(0 5px 8px rgba(0,0,0,.6))}
+
+    .leaflet-popup-content-wrapper,.leaflet-popup-tip{
+      background:#081522;color:#fff;border:1px solid #2d4d69;
+    }
+    .leaflet-popup-content{margin:10px;width:min(330px,78vw)!important}
+    .video-box{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+    .video-box iframe,.video-box video{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .popup-title{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .popup-title b{font-size:15px}
+    .live-tag{font-size:10px;background:var(--red);padding:3px 6px;border-radius:6px;font-weight:900}
+    .popup-meta{margin-top:8px;color:#b8c8d6;font-size:12px;line-height:1.5}
+    .empty-video{height:100%;display:grid;place-items:center;color:#93a8ba;text-align:center;padding:20px}
+
+    .toast{
+      position:fixed;z-index:2000;left:50%;top:max(78px,calc(env(safe-area-inset-top) + 68px));
+      transform:translate(-50%,-15px);opacity:0;pointer-events:none;
+      max-width:min(90vw,430px);background:#0d2235;color:white;border:1px solid #34536d;
+      border-radius:12px;padding:10px 13px;box-shadow:var(--shadow);transition:.2s;
+      font-size:13px;text-align:center;
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+
+    @media(max-width:620px){
+      .brand small{display:none}
+      .brand{padding:6px 8px}
+      .brand .logo{width:32px;height:32px}
+      .status-pill{padding:8px}
+      .status-pill span:last-child{display:none}
+      .top-btn{padding:9px 10px}
+      .leaflet-control-zoom{margin-top:72px!important}
+      .metrics{grid-template-columns:repeat(4,1fr)}
+      .metric{padding:6px 3px}
+      .metric b{font-size:12px}
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">🌪️</div>
+    <div><strong id="brandName">Storm Chaser Live</strong><small>Public GPS & livestream map</small></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="status-pill"><i id="statusDot" class="dot offline"></i><span id="statusText">OFFLINE</span></div>
+  <button id="menuBtn" class="top-btn">☰</button>
+</div>
+
+<aside id="panel" class="panel">
+  <div class="panel-head">
+    <h2>Storm Chaser Control</h2>
+    <button id="closeBtn" class="close-btn">Close</button>
+  </div>
+
+  <div class="card">
+    <h3>Viewer settings</h3>
+    <label for="displayName">Chaser display name</label>
+    <input id="displayName" value="Brian Storm Chasing" />
+    <label for="videoUrl">Livestream URL or video ID</label>
+    <input id="videoUrl" placeholder="YouTube URL, Twitch URL, or .m3u8 URL" />
+    <label for="videoType">Video provider</label>
+    <select id="videoType">
+      <option value="youtube">YouTube Live</option>
+      <option value="twitch">Twitch</option>
+      <option value="hls">HLS / .m3u8</option>
+      <option value="iframe">Other embeddable URL</option>
+    </select>
+    <button id="previewBtn" class="action secondary">Preview video popup</button>
+  </div>
+
+  <div class="card">
+    <h3>Broadcaster login</h3>
+    <p class="hint">Only the Firebase account whose UID matches <code>BROADCASTER_UID</code> can publish GPS.</p>
+    <label for="email">Firebase email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@example.com" />
+    <label for="password">Firebase password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="Password" />
+    <button id="loginBtn" class="action">Sign in</button>
+    <button id="logoutBtn" class="action secondary" hidden>Sign out</button>
+    <div id="authState" class="hint" style="margin-top:8px">Not signed in</div>
+  </div>
+
+  <div class="card">
+    <h3>GPS broadcast</h3>
+    <div class="row">
+      <button id="startBtn" class="action success" disabled>Start sharing</button>
+      <button id="stopBtn" class="action danger" disabled>Stop</button>
+    </div>
+    <button id="compassBtn" class="action secondary">Enable phone compass</button>
+    <label><input id="keepCentered" type="checkbox" checked style="width:auto;margin-right:7px"> Keep map centered while broadcasting</label>
+    <p class="hint">Keep this page open and your iPhone screen awake. Safari may pause GPS after the screen locks or the browser is backgrounded.</p>
+  </div>
+
+  <div class="card">
+    <h3>Map options</h3>
+    <label for="basemap">Basemap</label>
+    <select id="basemap">
+      <option value="dark">Dark</option>
+      <option value="street">Street</option>
+      <option value="satellite">Satellite</option>
+    </select>
+    <button id="copyViewerBtn" class="action secondary">Copy viewer link</button>
+  </div>
+
+  <div class="card">
+    <h3>Firebase setup required</h3>
+    <p class="hint">
+      Edit the constants near the top of the script: <code>firebaseConfig</code>,
+      <code>BROADCASTER_UID</code>, and optionally <code>CHANNEL_ID</code>.
+      The secure database rules are included at the bottom of this file as comments.
+    </p>
+  </div>
+</aside>
+
+<div class="hud">
+  <div class="chaser-card">
+    <div class="chaser-head">
+      <div class="avatar">🚙</div>
+      <div class="chaser-title">
+        <strong id="cardName">Brian Storm Chasing</strong>
+        <small id="cardSubtitle">Waiting for GPS position</small>
+      </div>
+      <button id="watchBtn" class="live-btn">WATCH</button>
+    </div>
+    <div class="metrics">
+      <div class="metric"><b id="speedVal">--</b><span>MPH</span></div>
+      <div class="metric"><b id="headingVal">--</b><span>Heading</span></div>
+      <div class="metric"><b id="accuracyVal">--</b><span>Accuracy</span></div>
+      <div class="metric"><b id="ageVal">--</b><span>Updated</span></div>
+    </div>
+    <button id="followBtn" class="follow-btn">◎ Follow chaser</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+<script type="module">
+  /*
+   * =============================================================
+   * 1) FIREBASE SETUP
+   * =============================================================
+   * Replace every placeholder below with your Firebase web-app config.
+   * In Firebase Authentication, enable Email/Password and create your account.
+   * Set BROADCASTER_UID to that account's UID.
+   */
+  const firebaseConfig = {
+    apiKey: "PASTE_FIREBASE_API_KEY",
+    authDomain: "PASTE_PROJECT.firebaseapp.com",
+    databaseURL: "https://PASTE_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "PASTE_PROJECT",
+    storageBucket: "PASTE_PROJECT.firebasestorage.app",
+    messagingSenderId: "PASTE_SENDER_ID",
+    appId: "PASTE_APP_ID"
+  };
+
+  const BROADCASTER_UID = "PASTE_YOUR_FIREBASE_USER_UID";
+  const CHANNEL_ID = "brian-storm-chasing";
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import {
+    getDatabase, ref, onValue, set, update, serverTimestamp, onDisconnect
+  } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+  import {
+    getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+  const $ = id => document.getElementById(id);
+  const toast = (message) => {
+    $("toast").textContent = message;
+    $("toast").classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => $("toast").classList.remove("show"), 3000);
+  };
+
+  const configured = !firebaseConfig.apiKey.includes("PASTE_")
+    && !firebaseConfig.databaseURL.includes("PASTE_")
+    && !BROADCASTER_UID.includes("PASTE_");
+
+  let app, db, auth, liveRef, user = null;
+  let watchId = null;
+  let phoneHeading = null;
+  let latestData = null;
+  let marker = null;
+  let accuracyCircle = null;
+  let follow = false;
+  let broadcasting = false;
+  let firstFix = true;
+  let lastWriteAt = 0;
+  let currentBase = null;
+
+  // ---------------------- MAP ----------------------
+  const map = L.map("map", {
+    zoomControl: true,
+    preferCanvas: true,
+    worldCopyJump: true
+  }).setView([38.93, -84.58], 7);
+
+  const tiles = {
+    dark: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 20, attribution: "&copy; OpenStreetMap &copy; CARTO"
+    }),
+    street: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+    }),
+    satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, attribution: "Tiles &copy; Esri"
+    })
+  };
+
+  function setBasemap(name){
+    if(currentBase) map.removeLayer(currentBase);
+    currentBase = tiles[name] || tiles.dark;
+    currentBase.addTo(map);
+    localStorage.setItem("stormBasemap", name);
+  }
+  $("basemap").value = localStorage.getItem("stormBasemap") || "dark";
+  setBasemap($("basemap").value);
+  $("basemap").addEventListener("change", e => setBasemap(e.target.value));
+
+  function markerIcon(heading = 0, offline = false){
+    const safeHeading = Number.isFinite(heading) ? heading : 0;
+    return L.divIcon({
+      className: "chaser-marker-wrap",
+      iconSize: [54,54],
+      iconAnchor: [27,27],
+      popupAnchor: [0,-30],
+      html: `<div class="chaser-marker ${offline ? "offline" : ""}">
+        <div class="arrow" style="transform:rotate(${safeHeading}deg)"></div>
+        <div class="ring"></div><div class="car">🚙</div>
+      </div>`
+    });
+  }
+
+  const mph = mps => Number.isFinite(mps) ? Math.max(0, mps * 2.236936) : null;
+  const feet = meters => Number.isFinite(meters) ? meters * 3.28084 : null;
+  const degToCardinal = deg => {
+    if(!Number.isFinite(deg)) return "--";
+    const names = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return names[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+  };
+  const ageText = ms => {
+    if(!Number.isFinite(ms)) return "--";
+    const s = Math.max(0, Math.floor(ms / 1000));
+    if(s < 5) return "NOW";
+    if(s < 60) return `${s}s`;
+    const m = Math.floor(s/60);
+    if(m < 60) return `${m}m`;
+    return `${Math.floor(m/60)}h`;
+  };
+
+  function getVideoEmbed(data = latestData || {}){
+    const type = data.videoType || $("videoType").value;
+    const raw = (data.videoUrl || $("videoUrl").value || "").trim();
+    if(!raw) return `<div class="empty-video">No livestream URL has been configured.</div>`;
+
+    if(type === "youtube"){
+      let id = raw;
+      try{
+        const u = new URL(raw);
+        if(u.hostname.includes("youtu.be")) id = u.pathname.slice(1);
+        else if(u.pathname.includes("/live/")) id = u.pathname.split("/live/")[1].split("/")[0];
+        else if(u.pathname.includes("/embed/")) id = u.pathname.split("/embed/")[1].split("/")[0];
+        else id = u.searchParams.get("v") || id;
+      }catch{}
+      id = id.split(/[?&/]/)[0];
+      return `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&mute=1"
+        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    }
+
+    if(type === "twitch"){
+      let channel = raw;
+      try{
+        const u = new URL(raw);
+        channel = u.pathname.split("/").filter(Boolean)[0] || channel;
+      }catch{}
+      const parent = location.hostname || "localhost";
+      return `<iframe src="https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${encodeURIComponent(parent)}&muted=true"
+        allowfullscreen></iframe>`;
+    }
+
+    if(type === "hls"){
+      return `<video controls autoplay muted playsinline src="${escapeAttr(raw)}"></video>`;
+    }
+
+    return `<iframe src="${escapeAttr(raw)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+  }
+
+  function escapeAttr(s){
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    })[c]);
+  }
+
+  function popupHTML(data = latestData || {}){
+    const name = escapeAttr(data.name || $("displayName").value || "Storm Chaser");
+    const speed = mph(data.speed);
+    const heading = Number.isFinite(data.heading) ? data.heading : null;
+    const age = Date.now() - Number(data.updatedAt || 0);
+    return `<div class="popup-title"><span class="live-tag">LIVE</span><b>${name}</b></div>
+      <div class="video-box">${getVideoEmbed(data)}</div>
+      <div class="popup-meta">
+        ${speed !== null ? `${speed.toFixed(0)} mph` : "-- mph"} ·
+        ${heading !== null ? `${degToCardinal(heading)} ${Math.round(heading)}°` : "Heading unavailable"}<br>
+        GPS updated ${ageText(age)} ago
+      </div>`;
+  }
+
+  function openVideo(){
+    if(marker){
+      marker.bindPopup(popupHTML(), {maxWidth:350, closeButton:true}).openPopup();
+    }else{
+      toast("Waiting for the first GPS position.");
+    }
+  }
+
+  $("watchBtn").addEventListener("click", openVideo);
+  $("previewBtn").addEventListener("click", () => {
+    if(marker) openVideo();
+    else L.popup().setLatLng(map.getCenter()).setContent(popupHTML({
+      name:$("displayName").value, videoUrl:$("videoUrl").value, videoType:$("videoType").value,
+      updatedAt:Date.now()
+    })).openOn(map);
+    $("panel").classList.remove("open");
+  });
+
+  function renderData(data){
+    if(!data || !Number.isFinite(Number(data.lat)) || !Number.isFinite(Number(data.lng))) return;
+    latestData = data;
+    const latlng = [Number(data.lat), Number(data.lng)];
+    const heading = Number.isFinite(Number(data.heading)) ? Number(data.heading) : 0;
+    const age = Date.now() - Number(data.updatedAt || 0);
+    const isLive = data.live === true && age < 30000;
+    const isDelayed = data.live === true && age >= 30000 && age < 120000;
+    const isOffline = !isLive && !isDelayed;
+
+    if(!marker){
+      marker = L.marker(latlng, {icon:markerIcon(heading,isOffline), zIndexOffset:1000}).addTo(map);
+      marker.on("click", () => marker.bindPopup(popupHTML(), {maxWidth:350}).openPopup());
+      accuracyCircle = L.circle(latlng, {
+        radius:Number(data.accuracy || 0), color:"#37d8ff", weight:1,
+        fillColor:"#37d8ff", fillOpacity:.08, interactive:false
+      }).addTo(map);
+      map.setView(latlng, 12);
+    }else{
+      marker.setLatLng(latlng).setIcon(markerIcon(heading,isOffline));
+      accuracyCircle.setLatLng(latlng).setRadius(Number(data.accuracy || 0));
+      if(marker.isPopupOpen()) marker.setPopupContent(popupHTML(data));
+    }
+
+    if(follow || (broadcasting && $("keepCentered").checked)) map.panTo(latlng, {animate:true,duration:.5});
+
+    const speed = mph(Number(data.speed));
+    const acc = feet(Number(data.accuracy));
+    $("cardName").textContent = data.name || "Storm Chaser";
+    $("brandName").textContent = data.name || "Storm Chaser Live";
+    $("speedVal").textContent = speed === null ? "--" : Math.round(speed);
+    $("headingVal").textContent = Number.isFinite(heading) ? `${degToCardinal(heading)} ${Math.round(heading)}°` : "--";
+    $("accuracyVal").textContent = acc === null ? "--" : `${Math.round(acc)} ft`;
+    $("ageVal").textContent = ageText(age);
+    $("cardSubtitle").textContent = isLive ? "Live GPS position" : isDelayed ? "GPS signal delayed" : "Chaser is offline";
+
+    $("statusDot").className = `dot ${isLive ? "live" : isDelayed ? "delayed" : "offline"}`;
+    $("statusText").textContent = isLive ? "LIVE" : isDelayed ? "DELAYED" : "OFFLINE";
+  }
+
+  setInterval(() => latestData && renderData(latestData), 1000);
+
+  $("followBtn").addEventListener("click", () => {
+    follow = !follow;
+    $("followBtn").classList.toggle("active", follow);
+    $("followBtn").textContent = follow ? "● Following chaser" : "◎ Follow chaser";
+    if(follow && marker) map.setView(marker.getLatLng(), Math.max(map.getZoom(),12));
+  });
+
+  map.on("dragstart", () => {
+    if(follow){
+      follow = false;
+      $("followBtn").classList.remove("active");
+      $("followBtn").textContent = "◎ Follow chaser";
+    }
+  });
+
+  // ---------------------- PANEL ----------------------
+  $("menuBtn").addEventListener("click", () => $("panel").classList.add("open"));
+  $("closeBtn").addEventListener("click", () => $("panel").classList.remove("open"));
+
+  $("copyViewerBtn").addEventListener("click", async () => {
+    try{
+      const u = new URL(location.href);
+      u.searchParams.set("mode","viewer");
+      await navigator.clipboard.writeText(u.href);
+      toast("Viewer link copied.");
+    }catch{
+      toast("Could not copy the link.");
+    }
+  });
+
+  // ---------------------- FIREBASE ----------------------
+  if(!configured){
+    toast("Add your Firebase configuration inside the HTML.");
+    $("authState").textContent = "Firebase has not been configured.";
+  }else{
+    try{
+      app = initializeApp(firebaseConfig);
+      db = getDatabase(app);
+      auth = getAuth(app);
+      liveRef = ref(db, `liveChasers/${CHANNEL_ID}`);
+
+      onValue(liveRef, snapshot => {
+        const data = snapshot.val();
+        if(data) renderData(data);
+      }, err => {
+        console.error(err);
+        toast("Firebase read failed. Check database rules.");
+      });
+
+      onAuthStateChanged(auth, currentUser => {
+        user = currentUser;
+        const allowed = user && user.uid === BROADCASTER_UID;
+        $("loginBtn").hidden = !!user;
+        $("logoutBtn").hidden = !user;
+        $("startBtn").disabled = !allowed || broadcasting;
+        $("stopBtn").disabled = !broadcasting;
+        $("authState").textContent = !user ? "Not signed in"
+          : allowed ? `Signed in as authorized broadcaster`
+          : `Signed in, but this UID is not authorized`;
+      });
+    }catch(err){
+      console.error(err);
+      toast("Firebase initialization failed.");
+    }
+  }
+
+  $("loginBtn").addEventListener("click", async () => {
+    if(!auth) return toast("Configure Firebase first.");
+    try{
+      await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value);
+      toast("Signed in.");
+    }catch(err){
+      console.error(err);
+      toast(err.message || "Sign-in failed.");
+    }
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    await stopBroadcast();
+    if(auth) await signOut(auth);
+  });
+
+  // ---------------------- COMPASS ----------------------
+  async function enableCompass(){
+    try{
+      if(typeof DeviceOrientationEvent !== "undefined"
+        && typeof DeviceOrientationEvent.requestPermission === "function"){
+        const result = await DeviceOrientationEvent.requestPermission(true);
+        if(result !== "granted") throw new Error("Compass permission denied");
+      }
+
+      const handler = event => {
+        let heading = null;
+        if(Number.isFinite(event.webkitCompassHeading)) heading = event.webkitCompassHeading;
+        else if(Number.isFinite(event.alpha)) heading = (360 - event.alpha) % 360;
+        if(Number.isFinite(heading)) phoneHeading = heading;
+      };
+
+      window.addEventListener("deviceorientationabsolute", handler, true);
+      window.addEventListener("deviceorientation", handler, true);
+      $("compassBtn").textContent = "Compass enabled";
+      toast("Phone compass enabled.");
+    }catch(err){
+      console.error(err);
+      toast("Compass permission was not granted.");
+    }
+  }
+  $("compassBtn").addEventListener("click", enableCompass);
+
+  // ---------------------- GPS BROADCAST ----------------------
+  async function publishPosition(position){
+    if(!db || !liveRef || !user || user.uid !== BROADCASTER_UID) return;
+    const now = Date.now();
+    if(now - lastWriteAt < 1500) return;
+    lastWriteAt = now;
+
+    const c = position.coords;
+    const gpsHeading = Number.isFinite(c.heading) && c.speed > 0.8 ? c.heading : null;
+    const heading = Number.isFinite(phoneHeading) ? phoneHeading : gpsHeading;
+
+    const payload = {
+      name: $("displayName").value.trim() || "Storm Chaser",
+      lat: c.latitude,
+      lng: c.longitude,
+      accuracy: c.accuracy,
+      altitude: Number.isFinite(c.altitude) ? c.altitude : null,
+      altitudeAccuracy: Number.isFinite(c.altitudeAccuracy) ? c.altitudeAccuracy : null,
+      speed: Number.isFinite(c.speed) ? c.speed : 0,
+      heading: Number.isFinite(heading) ? heading : null,
+      videoUrl: $("videoUrl").value.trim(),
+      videoType: $("videoType").value,
+      live: true,
+      updatedAt: now,
+      serverUpdatedAt: serverTimestamp()
+    };
+
+    try{
+      await set(liveRef, payload);
+      renderData(payload);
+      if(firstFix){
+        map.setView([c.latitude,c.longitude],15);
+        firstFix = false;
+      }
+    }catch(err){
+      console.error(err);
+      toast("Could not publish GPS. Check Firebase rules.");
+    }
+  }
+
+  function gpsError(err){
+    const messages = {
+      1:"Location permission denied.",
+      2:"GPS position unavailable.",
+      3:"GPS request timed out."
+    };
+    toast(messages[err.code] || err.message || "GPS error.");
+  }
+
+  async function startBroadcast(){
+    if(!configured || !user || user.uid !== BROADCASTER_UID) return toast("Sign in with the authorized broadcaster account.");
+    if(!navigator.geolocation) return toast("This browser does not support GPS.");
+
+    try{
+      const disconnectRef = onDisconnect(liveRef);
+      await disconnectRef.update({live:false,updatedAt:Date.now(),serverUpdatedAt:serverTimestamp()});
+    }catch(err){ console.warn("onDisconnect setup failed", err); }
+
+    broadcasting = true;
+    firstFix = true;
+    $("startBtn").disabled = true;
+    $("stopBtn").disabled = false;
+    $("authState").textContent = "Broadcasting GPS";
+    watchId = navigator.geolocation.watchPosition(publishPosition, gpsError, {
+      enableHighAccuracy:true,
+      maximumAge:1000,
+      timeout:15000
+    });
+    toast("GPS sharing started.");
+  }
+
+  async function stopBroadcast(){
+    if(watchId !== null){
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    broadcasting = false;
+    $("stopBtn").disabled = true;
+    $("startBtn").disabled = !(user && user.uid === BROADCASTER_UID);
+    $("authState").textContent = user ? "Signed in; GPS sharing stopped" : "Not signed in";
+    if(liveRef && user && user.uid === BROADCASTER_UID){
+      try{
+        await update(liveRef, {
+          live:false,
+          updatedAt:Date.now(),
+          serverUpdatedAt:serverTimestamp()
+        });
+      }catch(err){ console.error(err); }
+    }
+    toast("GPS sharing stopped.");
+  }
+
+  $("startBtn").addEventListener("click", startBroadcast);
+  $("stopBtn").addEventListener("click", stopBroadcast);
+
+  window.addEventListener("pagehide", () => {
+    if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+  });
+
+  // Viewer mode keeps broadcaster controls tucked away.
+  const params = new URLSearchParams(location.search);
+  if(params.get("mode") === "viewer"){
+    document.querySelectorAll(".panel .card").forEach((card,index) => {
+      if(index > 0) card.style.display = "none";
+    });
+  }
+</script>
+
+<!--
+=================================================================
+FIREBASE REALTIME DATABASE RULES
+=================================================================
+Paste these into:
+Firebase Console > Realtime Database > Rules
+
+Replace PASTE_YOUR_FIREBASE_USER_UID with the same UID used above.
+
+{
+  "rules": {
+    "liveChasers": {
+      "$channel": {
+        ".read": true,
+        ".write": "auth != null && auth.uid === 'PASTE_YOUR_FIREBASE_USER_UID'",
+        ".validate": "newData.hasChildren(['name','lat','lng','live','updatedAt'])",
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()"
+        }
+      }
+    }
+  }
+}
+
+SETUP CHECKLIST
+1. Create a Firebase project.
+2. Add a Web App and paste its config into firebaseConfig.
+3. Create Realtime Database.
+4. Enable Authentication > Email/Password.
+5. Create your broadcaster account.
+6. Copy its UID into BROADCASTER_UID and the database rules.
+7. Paste and publish the database rules.
+8. Put this HTML on GitHub Pages or another HTTPS website.
+9. Open the page on your iPhone, sign in, enable compass, and start sharing.
+10. Share the same URL with ?mode=viewer added to the end.
+
+Privacy warning:
+This page can publish your exact location publicly. Stop sharing when you
+do not want viewers to know your location. Consider using a delayed or
+rounded location if you need additional privacy.
+=================================================================
+-->
+</body>
+</html>
